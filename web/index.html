@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpsDesk — Service Desk (projeto pessoal)</title>
+<meta name="description" content="OpsDesk: service desk de demonstração com SLA, escalonamento N1/N2 e quadro de chamados. Projeto pessoal, dados simulados.">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%236d8cff'/%3E%3Cpath d='M16 7l7 9-7 9-7-9z' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side" aria-label="Navegação">
+    <a class="logo" href="#painel"><i><svg viewBox="0 0 24 24"><path d="M12 3l8 9-8 9-8-9z"/></svg></i><span>OpsDesk</span></a>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <div class="who"><span class="av a1"></span><span>Plantão N2</span></div>
+      <p class="fict">Projeto pessoal · dados fictícios</p>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="top">
+      <div class="title"><h1 id="h1"></h1><p id="sub"></p></div>
+      <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Buscar chamado…" autocomplete="off" aria-label="Buscar chamados"><kbd>Ctrl K</kbd></label>
+      <button class="btn pr" id="novo">+ Novo chamado</button>
+    </header>
+    <div id="view"></div>
+  </main>
+</div>
+
+<aside id="drawer" class="drawer" aria-hidden="true" aria-label="Detalhe do chamado"></aside>
+<div id="scrim" class="scrim"></div>
+
+<dialog id="dlg-nota"><form method="dialog" id="f-nota">
+  <h3 id="nota-t"></h3><p id="nota-d" class="muted"></p>
+  <textarea id="nota-v" rows="4" maxlength="500"></textarea>
+  <p class="err" id="nota-e" role="alert"></p>
+  <div class="row-end"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn pr" id="nota-ok" value="ok"></button></div>
+</form></dialog>
+
+<dialog id="dlg-novo"><form method="dialog" id="f-novo">
+  <h3>Novo chamado</h3>
+  <label>Título<input name="title" required maxlength="120" placeholder="Ex.: PDV sem comunicação"></label>
+  <label>Solicitante<input name="requester" required maxlength="60" placeholder="Ex.: Loja 0142"></label>
+  <div class="two">
+    <label>Categoria<select name="category"></select></label>
+    <label>Prioridade<select name="priority"></select></label>
+  </div>
+  <p class="err" id="novo-e" role="alert"></p>
+  <div class="row-end"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn pr" value="ok">Abrir chamado</button></div>
+</form></dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
