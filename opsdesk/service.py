@@ -32,6 +32,15 @@ class NaoEncontrado(Exception):
     pass
 
 
+def _txt(valor) -> str:
+    """Normaliza um campo de texto vindo da API: None vira "", e qualquer tipo que não seja texto é recusado."""
+    if valor is None:
+        return ""
+    if not isinstance(valor, str):
+        raise ValueError("Valor de texto inválido")
+    return valor.strip()
+
+
 def agora() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
@@ -49,10 +58,27 @@ class Desk:
         self.relogio = relogio
 
     # ---------- leitura ----------
-    def _ticket(self, row: sqlite3.Row, now: datetime) -> dict:
+    def _eventos(self, ids: list[int]) -> dict[int, list[dict]]:
+        """Busca os eventos de vários chamados de uma vez (em lotes), em vez de uma consulta por chamado.
+
+        O texto SQL só recebe marcadores "?" (um por id); os valores seguem parametrizados.
+        """
+        por_chamado: dict[int, list[dict]] = {i: [] for i in ids}
+        for inicio in range(0, len(ids), 500):
+            lote = ids[inicio:inicio + 500]
+            marcadores = ",".join("?" * len(lote))
+            consulta = ("SELECT ticket_id, at, actor, kind, note FROM events "
+                        f"WHERE ticket_id IN ({marcadores}) ORDER BY id")
+            for e in self.con.execute(consulta, lote):
+                por_chamado[e["ticket_id"]].append(
+                    {"at": e["at"], "actor": e["actor"], "kind": e["kind"], "note": e["note"]})
+        return por_chamado
+
+    def _ticket(self, row: sqlite3.Row, now: datetime, eventos: list[dict] | None = None) -> dict:
         t = dict(row)
-        t["events"] = [dict(e) for e in self.con.execute(
-            "SELECT at, actor, kind, note FROM events WHERE ticket_id=? ORDER BY id", (t["id"],))]
+        if eventos is None:
+            eventos = self._eventos([t["id"]])[t["id"]]
+        t["events"] = eventos
         t["sla_total_s"] = sla.total_s(t["priority"])
         t["sla_remaining_s"] = round(sla.restante_s(t, now))
         t["sla_state"] = sla.estado(t, now)
@@ -75,7 +101,9 @@ class Desk:
             sql += " AND (title LIKE ? OR requester LIKE ? OR CAST(id AS TEXT) LIKE ?)"
             args += [f"%{q}%"] * 3
         now = self.relogio()
-        out = [self._ticket(r, now) for r in self.con.execute(sql, args)]
+        linhas = self.con.execute(sql, args).fetchall()
+        eventos = self._eventos([r["id"] for r in linhas])
+        out = [self._ticket(r, now, eventos[r["id"]]) for r in linhas]
         # abertos primeiro, menor SLA restante primeiro
         out.sort(key=lambda t: (t["status"] == "resolvido", t["sla_remaining_s"]))
         return out
@@ -86,7 +114,8 @@ class Desk:
                          (tid, self.relogio().isoformat(), actor, kind, note))
 
     def criar(self, title, requester, category, priority, description="", actor="Sistema") -> dict:
-        title, requester = (title or "").strip(), (requester or "").strip()
+        title, requester = _txt(title), _txt(requester)
+        description, actor = _txt(description), _txt(actor) or "Sistema"
         if not title or not requester:
             raise ValueError("Título e solicitante são obrigatórios")
         if priority not in PRIORIDADES:
@@ -104,9 +133,9 @@ class Desk:
 
     def transicao(self, tid: int, para: str, nota: str = "", actor: str = "Analista") -> dict:
         t = self.obter(tid)
-        if para not in TRANSICOES.get(t["status"], set()):
+        if not isinstance(para, str) or para not in TRANSICOES.get(t["status"], set()):
             raise ValueError(f"Transição inválida: {t['status']} → {para}")
-        nota = (nota or "").strip()
+        nota, actor = _txt(nota), _txt(actor) or "Analista"
         if para == "resolvido" and not nota:
             raise ValueError("Descreva a solução para resolver o chamado")
         now = self.relogio()
@@ -129,12 +158,13 @@ class Desk:
             raise ValueError("Chamado resolvido não pode ser escalado")
         if t["level"] != "N1":
             raise ValueError("Chamado já está no N2")
-        if not (nota or "").strip():
+        nota, actor = _txt(nota), _txt(actor) or "Analista N1"
+        if not nota:
             raise ValueError("Informe as evidências para escalar ao N2")
         novo_status = "atendimento" if t["status"] == "novo" else t["status"]
         self.con.execute("UPDATE tickets SET level='N2', status=?, assignee='Plantão N2' WHERE id=?",
                          (novo_status, tid))
-        self._evento(tid, actor, "escalado", nota.strip())
+        self._evento(tid, actor, "escalado", nota)
         self.con.commit()
         return self.obter(tid)
 

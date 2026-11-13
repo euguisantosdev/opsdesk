@@ -14,6 +14,11 @@ from .service import Desk, NaoEncontrado, conectar, agora
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 LOCK = threading.Lock()
+MAX_CORPO = 64 * 1024  # 64 KiB: de sobra para o JSON desta API
+
+
+class CorpoGrande(Exception):
+    """O Content-Length da requisição passa do limite aceito."""
 
 
 def criar_desk(db: str, popular: bool = True) -> Desk:
@@ -38,11 +43,21 @@ def fabricar_handler(desk: Desk):
             self.wfile.write(dados)
 
         def _corpo(self):
-            n = int(self.headers.get("Content-Length") or 0)
             try:
-                return json.loads(self.rfile.read(n) or b"{}")
-            except json.JSONDecodeError:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                raise ValueError("Content-Length inválido")
+            if n < 0:
+                raise ValueError("Content-Length inválido")
+            if n > MAX_CORPO:
+                raise CorpoGrande()
+            try:
+                corpo = json.loads(self.rfile.read(n) or b"{}")
+            except ValueError:  # inclui JSON inválido e bytes que não são UTF-8
                 raise ValueError("JSON inválido")
+            if not isinstance(corpo, dict):
+                raise ValueError("O corpo deve ser um objeto JSON")
+            return corpo
 
         def _estatico(self, caminho):
             alvo = "index.html" if caminho in ("", "/") else caminho.lstrip("/")
@@ -85,6 +100,9 @@ def fabricar_handler(desk: Desk):
             u = urlparse(self.path)
             try:
                 b = self._corpo()
+            except CorpoGrande:
+                self.close_connection = True  # o corpo não foi lido: não reaproveitar a conexão
+                return self._json(413, {"erro": "Corpo da requisição grande demais"})
             except ValueError as e:
                 return self._json(400, {"erro": str(e)})
             if u.path == "/api/tickets":

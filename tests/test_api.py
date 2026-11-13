@@ -1,3 +1,4 @@
+import http.client
 import json
 import threading
 import urllib.error
@@ -61,3 +62,29 @@ def test_nao_serve_arquivos_fora_da_pasta_web(base):
     with pytest.raises(urllib.error.HTTPError) as e:
         urllib.request.urlopen(base + "/..%2fopsdesk%2fservice.py")
     assert e.value.code == 404
+
+
+def test_corpo_que_nao_e_objeto_json_retorna_400(base):
+    assert req(base, "POST", "/api/tickets", [1, 2])[0] == 400
+
+
+def test_campo_com_tipo_errado_retorna_400(base):
+    corpo = {"title": 123, "requester": "Loja 1", "category": "ERP", "priority": "alta"}
+    assert req(base, "POST", "/api/tickets", corpo)[0] == 400
+
+
+def test_destino_de_transicao_que_nao_e_texto_retorna_400(base):
+    s, t = req(base, "POST", "/api/tickets", {"title": "Teste", "requester": "Loja 1", "category": "ERP", "priority": "baixa"})
+    assert s == 201
+    assert req(base, "POST", f"/api/tickets/{t['id']}/transition", {"to": ["resolvido"]})[0] == 400
+
+
+def test_corpo_grande_demais_retorna_413(base):
+    host, porta = base.removeprefix("http://").split(":")
+    conn = http.client.HTTPConnection(host, int(porta), timeout=5)
+    conn.putrequest("POST", "/api/tickets")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Content-Length", str(server.MAX_CORPO + 1))
+    conn.endheaders()  # só os cabeçalhos: o servidor deve recusar sem esperar o corpo
+    assert conn.getresponse().status == 413
+    conn.close()

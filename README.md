@@ -38,21 +38,49 @@ Sem dependências externas: apenas a biblioteca padrão do Python. Sem a API, a 
 python -m opsdesk.server        # abre em http://127.0.0.1:8000
 ```
 
-Testes (32 testes de SLA, ciclo do chamado e API):
+Testes (44 testes: SLA, ciclo do chamado, consultas e API):
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
+Requer Python 3.10 ou superior. O CI do GitHub roda com Python 3.12.
+
 Gerar de novo os dados da demonstração: `python export_demo.py`.
+
+## API
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /api/tickets` | Lista os chamados (filtros opcionais: `status`, `priority`, `level`, `q`) |
+| `GET /api/tickets/{id}` | Abre um chamado, com histórico e estado do SLA |
+| `POST /api/tickets` | Cria um chamado (`title`, `requester`, `category`, `priority`) |
+| `POST /api/tickets/{id}/transition` | Muda o estado (`to`, `note`); resolver exige `note` com a solução |
+| `POST /api/tickets/{id}/escalate` | Escala de N1 para N2 (`note` com as evidências) |
+| `GET /api/metrics` | Indicadores do painel |
+
+Erros de validação retornam `400`; chamado inexistente, `404`; corpo acima de 64 KiB, `413`.
 
 ## Decisões de projeto
 
 - **Regras de negócio em Python puro e testadas**, separadas da interface; o front só exibe e chama a API.
 - **SQL direto (sqlite3)** para ficar explícito o modelo de dados (`tickets` e `events`).
-- **Segurança básica:** consultas parametrizadas, escape de HTML no front e bloqueio de caminhos fora de `web/`.
+- **Transições de estado declaradas em uma tabela** (`TRANSICOES`), em vez de condicionais espalhadas.
+- **Relógio injetável**: os testes controlam o tempo e verificam a pausa do SLA sem esperar.
+- **Segurança básica:** consultas parametrizadas, escape de HTML no front, bloqueio de caminhos fora de `web/`, limite de tamanho do corpo da requisição e recusa de campos que não sejam texto.
+- **Leitura em lote:** os eventos de todos os chamados são buscados em uma consulta por lote, e não uma consulta por chamado (há um teste que garante isso).
+
+## Limitações conhecidas
+
+Este é um projeto de demonstração, não um sistema de produção.
+
+- **Sem autenticação:** o campo `actor` das ações vem da requisição e não é verificado.
+- **Sem migrações de banco** (o esquema é criado na primeira execução) e **sem paginação** nas listagens.
+- As métricas carregam todos os chamados e seus eventos.
+- Um bloqueio global serializa as requisições; o servidor da biblioteca padrão não é indicado para carga real.
+- Datas em UTC, sem fuso horário explícito.
 
 ## Próximos passos
 
-Base de conhecimento ligada aos chamados, log de auditoria detalhado e integração com o [SRE Auto-Heal](https://github.com/euguisantosdev/sre-autoheal).
+Base de conhecimento ligada aos chamados, log de auditoria detalhado, integração com o [SRE Auto-Heal](https://github.com/euguisantosdev/sre-autoheal) e uma versão do backend em **Java e Spring Boot** com PostgreSQL (planejada; ainda não iniciada).
